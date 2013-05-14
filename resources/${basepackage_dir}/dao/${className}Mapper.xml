@@ -1,0 +1,310 @@
+<#include "/macro.include"/>
+<#assign className = table.className>   
+<#assign classNameFirstLower = table.classNameFirstLower> 
+<#macro mapperEl value>${r"#{"}${value}}</#macro>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="${className}">
+<sql id="${table.sqlName}_Column_List" >
+    <choose>
+        <when test = " dynamicColumns==null" >
+          <#list table.columns as column>
+            ${table.sqlName}.${column.sqlName}<#if column_has_next> , </#if> 
+          </#list>
+        </when>
+        <otherwise>
+            <@jspEl 'dynamicColumns'/>
+
+        </otherwise> 
+    </choose>   
+</sql>
+
+
+<sql id="${table.sqlName}_Tables_Source" >
+    <trim prefixOverrides=","  suffixOverrides=",">
+          ${table.sqlName} , 
+        <if test="extraTables!=null">
+          <@jspEl 'extraTables'/>
+
+        </if>
+    </trim>
+</sql>
+
+
+
+<sql id="${table.sqlName}_Where_Clause" >
+  <where> 
+    <choose>
+      <when test="useAnd">
+            <#list table.columns as column>
+              <if test="${column.columnNameFirstLower} != null" >
+                AND ${table.sqlName}.${column.sqlName} = <@mapperEl column.columnNameFirstLower/> 
+               </if>
+            </#list>
+            <#list table.columns as column>
+              <#if column.javaType == "java.lang.String">
+                <if test="${column.columnNameFirstLower}LinkLike != null" >
+                  AND ${table.sqlName}.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                </if>
+              </#if>
+            </#list>
+      </when>
+      <otherwise>
+            <#list table.columns as column>
+              <if test="${column.columnNameFirstLower} != null" >
+                OR ${table.sqlName}.${column.sqlName} = <@mapperEl column.columnNameFirstLower/>
+               </if>
+            </#list>
+            <#list table.columns as column>
+              <#if column.javaType == "java.lang.String">
+                <if test="${column.columnNameFirstLower}LinkLike != null" >
+                  OR ${table.sqlName}.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                </if>
+              </#if>
+            </#list>
+      </otherwise>
+    </choose>
+    <if test="extraConditions != null">
+        <@jspEl 'extraConditions'/>
+    
+    </if>
+  </where>
+  <if test="orderBy!= null">
+      <@jspEl 'orderBy'/>
+  
+  </if>
+  <if test="groupBy!= null">
+      <@jspEl 'groupBy'/>
+  
+  </if>
+</sql>
+
+
+<select id="select" parameterType="${basepackage}.module.${table.className}Parameter" resultType="${basepackage}.module.${table.className}">
+  SELECT 
+  <if test="distinct">
+    DISTINCT
+  </if>
+  <include refid="${table.sqlName}_Column_List" />
+  FROM 
+  <include refid="${table.sqlName}_Tables_Source" />
+  <include refid="${table.sqlName}_Where_Clause" />
+</select>
+<!--
+SELECT * FROM 
+(
+SELECT A.*, ROWNUM RN 
+FROM (SELECT * FROM TABLE_NAME) A 
+WHERE ROWNUM <= 40
+)
+WHERE RN >= 21
+-->
+
+<select id="selectByPage" parameterType="map" resultType="${basepackage}.module.${table.className}">
+  <if test="_databaseId == 'oracle'">
+  SELECT * FROM 
+  (
+  SELECT A.*, ROWNUM ROW 
+  FROM (
+  SELECT 
+    <choose>
+      <when test = "parameter.dynamicColumns==null" >
+        <#list table.columns as column>
+          t1.${column.sqlName}<#if column_has_next> , </#if> 
+        </#list>
+      </when>
+      <otherwise>
+          <@jspEl 'dynamicColumns'/>
+
+      </otherwise> 
+    </choose>   
+  FROM
+    <trim prefixOverrides=","  suffixOverrides=",">
+          ${table.sqlName} t1 , 
+        <if test="parameter.extraTables!=null">
+          <@jspEl 'extraTables'/>
+
+        </if>
+    </trim>
+  <where> 
+      <choose>
+        <when test="parameter.useAnd">
+              <#list table.columns as column>
+                <if test="parameter.${column.columnNameFirstLower} != null" >
+                  AND t1.${column.sqlName} = <@mapperEl column.columnNameFirstLower/> 
+                 </if>
+              </#list>
+              <#list table.columns as column>
+                <#if column.javaType == "java.lang.String">
+                  <if test="parameter.${column.columnNameFirstLower}LinkLike != null" >
+                    AND t1.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                  </if>
+                </#if>
+              </#list>
+        </when>
+        <otherwise>
+              <#list table.columns as column>
+                <if test="parameter.${column.columnNameFirstLower} != null" >
+                  OR t1.${column.sqlName} = <@mapperEl column.columnNameFirstLower/>
+                 </if>
+              </#list>
+              <#list table.columns as column>
+                <#if column.javaType == "java.lang.String">
+                  <if test="parameter.${column.columnNameFirstLower}LinkLike != null" >
+                    OR t1.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                  </if>
+                </#if>
+              </#list>
+        </otherwise>
+      </choose>
+      <if test="parameter.extraConditions != null">
+          <@jspEl 'extraConditions'/>
+      
+      </if>
+  </where>
+        <if test="parameter.orderBy!= null">
+            <@jspEl 'orderBy'/>
+        
+        </if>
+        <if test="parameter.groupBy!= null">
+            <@jspEl 'groupBy'/>
+        
+        </if>
+  ) A 
+  WHERE ROWNUM < pageIndex
+  )
+  WHERE ROW > pageSize
+  </if>
+  <if test="_databaseId == 'mysql'">
+    <!--
+select * from Member limit 10, 100; 
+    -->
+    SELECT 
+        <choose>
+            <when test = "parameter.dynamicColumns==null" >
+              <#list table.columns as column>
+                t1.${column.sqlName}<#if column_has_next> , </#if> 
+              </#list>
+            </when>
+            <otherwise>
+                <@jspEl 'dynamicColumns'/>
+
+            </otherwise> 
+        </choose>   
+    FROM 
+        <trim prefixOverrides=","  suffixOverrides=",">
+              ${table.sqlName} t1 , 
+            <if test="parameter.extraTables!=null">
+              <@jspEl 'extraTables'/>
+
+            </if>
+        </trim>
+        <where> 
+        <choose>
+          <when test="parameter.useAnd">
+                <#list table.columns as column>
+                  <if test="parameter.${column.columnNameFirstLower} != null" >
+                    AND t1.${column.sqlName} = <@mapperEl column.columnNameFirstLower/> 
+                   </if>
+                </#list>
+                <#list table.columns as column>
+                  <#if column.javaType == "java.lang.String">
+                    <if test="parameter.${column.columnNameFirstLower}LinkLike != null" >
+                      AND t1.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                    </if>
+                  </#if>
+                </#list>
+          </when>
+          <otherwise>
+                <#list table.columns as column>
+                  <if test="parameter.${column.columnNameFirstLower} != null" >
+                    OR t1.${column.sqlName} = <@mapperEl column.columnNameFirstLower/>
+                   </if>
+                </#list>
+                <#list table.columns as column>
+                  <#if column.javaType == "java.lang.String">
+                    <if test="parameter.${column.columnNameFirstLower}LinkLike != null" >
+                      OR t1.${column.sqlName} LIKE <@mapperEl column.columnNameFirstLower/>
+                    </if>
+                  </#if>
+                </#list>
+          </otherwise>
+        </choose>
+        <if test="parameter.extraConditions != null">
+            <@jspEl 'extraConditions'/>
+        
+        </if>
+      </where>
+      <if test="parameter.orderBy!= null">
+          <@jspEl 'orderBy'/>
+      
+      </if>
+      <if test="parameter.groupBy!= null">
+          <@jspEl 'groupBy'/>
+      
+      </if>
+    LIMIT pageIndex , pageSize
+  </if>
+</select>
+
+
+<!--
+  INSERT INTO Persons (LastName, Address) VALUES ('Wilson', 'Champs-Elysees')
+-->
+<insert id="insert" parameterType="${basepackage}.module.${table.className}">
+  INSERT INTO
+  ${table.sqlName} 
+   <trim prefix="(" suffix=")" suffixOverrides=",">
+    <#list table.columns as column>
+        <if test="${column.columnNameFirstLower} != null" >
+          ${table.sqlName}.${column.sqlName}<#if column_has_next> , </#if> 
+         </if>
+      </#list>
+  </trim>
+  VALUES
+  <trim prefix="(" suffix=")" suffixOverrides=",">
+     <#list table.columns as column>
+        <if test="${column.columnNameFirstLower} != null" >
+          <@mapperEl column.columnNameFirstLower/><#if column_has_next> , </#if> 
+         </if>
+      </#list>
+  </trim>
+</isert>
+
+<!--
+UPDATE 表名称 SET 列名称 = 新值 WHERE 列名称 = 某值
+-->
+<update id="updateByParam" parameterType="${basepackage}.module.${table.className}Parameter">
+    UPDATE
+    ${table.sqlName} 
+    <set>
+      <#list table.columns as column>
+        <if test="record.${column.columnNameFirstLower} != null" >
+          ${table.sqlName}.${column.sqlName} = <@mapperEl column.columnNameFirstLower/><#if column_has_next> , </#if> 
+         </if>
+      </#list>
+    </set>
+    <include refid="${table.sqlName}_Where_Clause" />
+</update>
+
+
+
+<update id="updateById" parameterType="<#list table.columns as column><#if column.pk && (table.pkCount == 1)><#if column.javaType == "java.lang.Long" || column.javaType == "java.lang.Integer">java.lang.Integer<#else><#if column.javaType == "java.lang.String">java.lang.String</#if></#if></#if></#list>">
+    UPDATE
+    ${table.sqlName} 
+    <set>
+      <#list table.columns as column>
+        <if test="record.${column.columnNameFirstLower} != null" >
+          ${table.sqlName}.${column.sqlName} = <@mapperEl column.columnNameFirstLower/><#if column_has_next> , </#if> 
+         </if>
+      </#list>
+    </set>
+    WHERE
+    <#list table.columns as column>
+      <#if column.pk && (table.pkCount == 1)>
+        ${table.sqlName}.${column.sqlName} = <@mapperEl column.columnNameFirstLower/>
+      </#if>
+    </#list>
+</update>
+</mapper>
